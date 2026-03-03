@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { CameraPanel } from './components/CameraPanel'
 import { CoinTossPanel } from './components/CoinTossPanel'
+import type { CoinAnimationConfig } from './components/Coin'
 import { HexagramDisplay } from './components/HexagramDisplay'
 import { InterpretationPanel } from './components/InterpretationPanel'
 import { LineHistory } from './components/LineHistory'
@@ -12,12 +13,74 @@ import { requestInterpretation } from './llm/openaiClient'
 import { coinsToLine, randomCoinSide, tossThreeCoins } from './logic/coin'
 import { computeHexagram } from './logic/hexagram'
 import type { CoinSide, TossRecord } from './logic/types'
-import { useHandGestureToss } from './vision/useHandGestureToss'
+import { useHandGestureToss, type GestureControl } from './vision/useHandGestureToss'
 
 const INITIAL_COINS: CoinSide[] = ['heads', 'tails', 'heads']
+const INITIAL_MANUAL_CONTROL = {
+  power: 0.56,
+  speed: 0.52,
+}
+
+type TossControlInput = Pick<GestureControl, 'power' | 'speed'>
+
+interface TossAnimationProfile {
+  coinAnimation: CoinAnimationConfig
+  tickIntervalMs: number
+  ticks: number
+}
+
+function clamp01(value: number): number {
+  if (value < 0) {
+    return 0
+  }
+  if (value > 1) {
+    return 1
+  }
+  return value
+}
 
 function randomFaces(): CoinSide[] {
   return Array.from({ length: 3 }, () => randomCoinSide())
+}
+
+function normalizeControl(control: TossControlInput): TossControlInput {
+  return {
+    power: clamp01(control.power),
+    speed: clamp01(control.speed),
+  }
+}
+
+function buildTossAnimation(control: TossControlInput): TossAnimationProfile {
+  const normalized = normalizeControl(control)
+  const { power, speed } = normalized
+
+  const launchHeight = Math.round(82 + power * 138)
+  const spinDurationMs = Math.round(980 - speed * 540)
+  const rotateEndDeg = Math.round(1040 + speed * 1860)
+
+  const easing =
+    speed > 0.66
+      ? 'cubic-bezier(0.16, 0.92, 0.26, 1)'
+      : power > 0.68
+        ? 'cubic-bezier(0.14, 0.86, 0.24, 1)'
+        : 'cubic-bezier(0.2, 0.8, 0.28, 1)'
+
+  const tickIntervalMs = Math.round(58 + (1 - speed) * 52)
+  const estimatedFlightMs = Math.round(700 + power * 430 - speed * 120)
+
+  return {
+    tickIntervalMs,
+    ticks: Math.max(7, Math.round(estimatedFlightMs / tickIntervalMs)),
+    coinAnimation: {
+      launchHeight,
+      spinDurationMs,
+      easing,
+      rotateMidDeg: Math.round(rotateEndDeg * 0.44),
+      rotatePeakDeg: Math.round(rotateEndDeg * 0.78),
+      rotateEndDeg,
+      wobbleDeg: Math.round(9 + speed * 17),
+    },
+  }
 }
 
 export default function App() {
@@ -29,6 +92,15 @@ export default function App() {
   const [coinFaces, setCoinFaces] = useState<CoinSide[]>(INITIAL_COINS)
   const [isAnimating, setIsAnimating] = useState(false)
   const [lastTrigger, setLastTrigger] = useState<'manual' | 'gesture'>()
+
+  const [manualControl, setManualControl] = useState<TossControlInput>(
+    INITIAL_MANUAL_CONTROL,
+  )
+  const [activeTossControl, setActiveTossControl] =
+    useState<TossControlInput>(INITIAL_MANUAL_CONTROL)
+  const [coinAnimation, setCoinAnimation] = useState<CoinAnimationConfig>(
+    buildTossAnimation(INITIAL_MANUAL_CONTROL).coinAnimation,
+  )
 
   const [cameraEnabled, setCameraEnabled] = useState(false)
   const [cameraError, setCameraError] = useState<string>()
@@ -156,11 +228,16 @@ export default function App() {
   }, [])
 
   const toss = useCallback(
-    (source: 'manual' | 'gesture') => {
+    (source: 'manual' | 'gesture', controlOverride?: TossControlInput) => {
       if (isAnimating || records.length >= 6) {
         return
       }
 
+      const selectedControl = normalizeControl(controlOverride ?? manualControl)
+      const animationProfile = buildTossAnimation(selectedControl)
+
+      setActiveTossControl(selectedControl)
+      setCoinAnimation(animationProfile.coinAnimation)
       setIsAnimating(true)
       setLastTrigger(source)
       setInterpretation('')
@@ -175,7 +252,7 @@ export default function App() {
         ticks += 1
         setCoinFaces(randomFaces())
 
-        if (ticks < 10) {
+        if (ticks < animationProfile.ticks) {
           return
         }
 
@@ -204,9 +281,9 @@ export default function App() {
         })
 
         setIsAnimating(false)
-      }, 90)
+      }, animationProfile.tickIntervalMs)
     },
-    [isAnimating, records.length],
+    [isAnimating, manualControl, records.length],
   )
 
   const tossRef = useRef(toss)
@@ -214,8 +291,8 @@ export default function App() {
     tossRef.current = toss
   }, [toss])
 
-  const onGestureTrigger = useCallback(() => {
-    tossRef.current('gesture')
+  const onGestureTrigger = useCallback((control: GestureControl) => {
+    tossRef.current('gesture', control)
   }, [])
 
   const gestureState = useHandGestureToss({
@@ -225,7 +302,27 @@ export default function App() {
     visionConfig: config.vision,
   })
 
+  const updateManualPower = useCallback((power: number) => {
+    setManualControl((prev) => ({
+      ...prev,
+      power: clamp01(power),
+    }))
+  }, [])
+
+  const updateManualSpeed = useCallback((speed: number) => {
+    setManualControl((prev) => ({
+      ...prev,
+      speed: clamp01(speed),
+    }))
+  }, [])
+
   const resetSession = useCallback(() => {
+    if (spinTimerRef.current !== null) {
+      window.clearInterval(spinTimerRef.current)
+      spinTimerRef.current = null
+    }
+
+    setIsAnimating(false)
     setRecords([])
     setCoinFaces(INITIAL_COINS)
     setLastTrigger(undefined)
@@ -275,7 +372,7 @@ export default function App() {
         <p className="eyebrow">Liuyao Coin Toss</p>
         <h1>六爻 · 铜钱起卦</h1>
         <p className="intro">
-          使用三枚铜钱抛掷六次生成主卦与变卦，可通过手势或手动按钮触发 Toss。
+          三枚铜钱抛掷六次生成主卦与变卦。手势模式支持动态设置抛掷高度与旋转速度。
         </p>
 
         <label htmlFor="question" className="question-label">
@@ -299,8 +396,8 @@ export default function App() {
         </div>
       </header>
 
-      <main className="main-grid">
-        <div className="column">
+      <main className="app-main">
+        <section className="hero-stage">
           <CoinTossPanel
             coins={coinFaces}
             isAnimating={isAnimating}
@@ -308,66 +405,77 @@ export default function App() {
             tossCount={records.length}
             lastTrigger={lastTrigger}
             onToss={() => toss('manual')}
+            tossAnimation={coinAnimation}
+            manualControl={manualControl}
+            activeTossControl={activeTossControl}
+            gestureControl={gestureState.gestureControl}
+            cameraEnabled={cameraEnabled}
+            onManualPowerChange={updateManualPower}
+            onManualSpeedChange={updateManualSpeed}
           />
+        </section>
 
-          <CameraPanel
-            enabled={cameraEnabled}
-            onToggle={setCameraEnabled}
-            videoRef={videoRef}
-            cameraError={cameraError}
-            gestureState={gestureState}
-          />
+        <section className="main-grid">
+          <div className="column">
+            <CameraPanel
+              enabled={cameraEnabled}
+              onToggle={setCameraEnabled}
+              videoRef={videoRef}
+              cameraError={cameraError}
+              gestureState={gestureState}
+            />
 
-          <section className="panel session-panel">
-            <button type="button" className="ghost-btn" onClick={resetSession}>
-              重置本轮
-            </button>
-            <p className="muted">抛掷满六次后自动计算卦象。</p>
-          </section>
-        </div>
-
-        <div className="column">
-          <LineHistory records={records} />
-
-          {result ? (
-            <section className="hexagram-grid">
-              <HexagramDisplay
-                heading="主卦"
-                name={result.main.name}
-                binary={result.main.binary}
-                description={result.main.description}
-                lines={result.lines.map((line) => ({
-                  isYang: line.isYang,
-                  isMoving: line.isMoving,
-                }))}
-                content={mainContent}
-              />
-              <HexagramDisplay
-                heading="变卦"
-                name={result.changed.name}
-                binary={result.changed.binary}
-                description={result.changed.description}
-                lines={result.lines.map((line) => ({
-                  isYang: line.isMoving ? !line.isYang : line.isYang,
-                }))}
-                content={changedContent}
-              />
+            <section className="panel session-panel">
+              <button type="button" className="ghost-btn" onClick={resetSession}>
+                重置本轮
+              </button>
+              <p className="muted">抛掷满六次后自动计算卦象。</p>
             </section>
-          ) : (
-            <section className="panel">
-              <h2>卦象结果</h2>
-              <p className="muted">完成六次 Toss 后显示主卦、变卦与动爻。</p>
-            </section>
-          )}
+          </div>
 
-          <InterpretationPanel
-            canGenerate={Boolean(result)}
-            loading={loadingInterpretation}
-            error={interpretationError}
-            interpretation={interpretation}
-            onGenerate={generateInterpretation}
-          />
-        </div>
+          <div className="column">
+            <LineHistory records={records} />
+
+            {result ? (
+              <section className="hexagram-grid">
+                <HexagramDisplay
+                  heading="主卦"
+                  name={result.main.name}
+                  binary={result.main.binary}
+                  description={result.main.description}
+                  lines={result.lines.map((line) => ({
+                    isYang: line.isYang,
+                    isMoving: line.isMoving,
+                  }))}
+                  content={mainContent}
+                />
+                <HexagramDisplay
+                  heading="变卦"
+                  name={result.changed.name}
+                  binary={result.changed.binary}
+                  description={result.changed.description}
+                  lines={result.lines.map((line) => ({
+                    isYang: line.isMoving ? !line.isYang : line.isYang,
+                  }))}
+                  content={changedContent}
+                />
+              </section>
+            ) : (
+              <section className="panel">
+                <h2>卦象结果</h2>
+                <p className="muted">完成六次 Toss 后显示主卦、变卦与动爻。</p>
+              </section>
+            )}
+
+            <InterpretationPanel
+              canGenerate={Boolean(result)}
+              loading={loadingInterpretation}
+              error={interpretationError}
+              interpretation={interpretation}
+              onGenerate={generateInterpretation}
+            />
+          </div>
+        </section>
       </main>
     </div>
   )

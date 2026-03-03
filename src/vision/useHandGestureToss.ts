@@ -3,7 +3,7 @@ import {
   HandLandmarker,
   type NormalizedLandmark,
 } from '@mediapipe/tasks-vision'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { VisionConfig } from '../config/types'
 
 export type GesturePhase =
@@ -17,13 +17,20 @@ export type GesturePhase =
 export interface GestureState {
   phase: GesturePhase
   statusText: string
+  gestureControl: GestureControl
   error?: string
+}
+
+export interface GestureControl {
+  power: number
+  speed: number
+  lastSampleAt: number
 }
 
 interface UseHandGestureTossOptions {
   enabled: boolean
   videoRef: RefObject<HTMLVideoElement | null>
-  onGestureTrigger: () => void
+  onGestureTrigger: (control: GestureControl) => void
   cooldownMs?: number
   armTimeoutMs?: number
   visionConfig?: VisionConfig
@@ -41,6 +48,11 @@ const RUNNING_MODE: VisionRunningMode = 'VIDEO'
 
 const DEFAULT_COOLDOWN_MS = 2000
 const DEFAULT_ARM_TIMEOUT_MS = 2800
+const DEFAULT_GESTURE_CONTROL: GestureControl = {
+  power: 0.55,
+  speed: 0.5,
+  lastSampleAt: 0,
+}
 
 type VisionEnvKey = typeof ENV_WASM_BASE_URL | typeof ENV_MODEL_ASSET_URL
 
@@ -48,6 +60,12 @@ interface ResolvedVisionAssetConfig {
   wasmBaseCandidates: string[]
   modelAssetCandidates: string[]
   warnings: string[]
+}
+
+interface MotionSample {
+  palmCenterY: number
+  palmSpan: number
+  at: number
 }
 
 function distance(a: NormalizedLandmark, b: NormalizedLandmark): number {
@@ -104,6 +122,61 @@ function classifyHandPose(landmarks: NormalizedLandmark[]): HandPose {
 
 function ensureTrailingSlash(value: string): string {
   return value.endsWith('/') ? value : `${value}/`
+}
+
+function clamp01(value: number): number {
+  if (value < 0) {
+    return 0
+  }
+  if (value > 1) {
+    return 1
+  }
+  return value
+}
+
+function lerp(from: number, to: number, alpha: number): number {
+  return from + (to - from) * alpha
+}
+
+function measureMotionSample(
+  landmarks: NormalizedLandmark[],
+  at: number,
+): MotionSample {
+  return {
+    palmCenterY: (landmarks[0].y + landmarks[5].y + landmarks[17].y) / 3,
+    palmSpan: distance(landmarks[5], landmarks[17]),
+    at,
+  }
+}
+
+function updateGestureControl(
+  previousSample: MotionSample | null,
+  nextSample: MotionSample,
+  currentControl: GestureControl,
+): GestureControl {
+  const proximity = clamp01((nextSample.palmSpan - 0.09) / 0.16)
+
+  let rawPower = clamp01(0.34 + proximity * 0.46)
+  let rawSpeed = clamp01(0.32 + proximity * 0.36)
+
+  if (previousSample) {
+    const dt = Math.max(1, nextSample.at - previousSample.at)
+    const verticalVelocity = (previousSample.palmCenterY - nextSample.palmCenterY) / dt
+    const upward = clamp01(Math.max(0, verticalVelocity) * 220)
+    const downward = clamp01(Math.max(0, -verticalVelocity) * 220)
+    const movementEnergy = clamp01((upward + downward) * 0.5)
+
+    rawPower = clamp01(upward * 0.74 + proximity * 0.26)
+    rawSpeed = clamp01(downward * 0.74 + movementEnergy * 0.16 + proximity * 0.1)
+  }
+
+  const alpha = previousSample ? 0.32 : 0.55
+
+  return {
+    power: clamp01(lerp(currentControl.power, rawPower, alpha)),
+    speed: clamp01(lerp(currentControl.speed, rawSpeed, alpha)),
+    lastSampleAt: Date.now(),
+  }
 }
 
 function formatError(error: unknown): string {
@@ -313,26 +386,38 @@ export function useHandGestureToss({
   const [state, setState] = useState<GestureState>({
     phase: 'disabled',
     statusText: 'Camera is off. Use manual toss.',
+    gestureControl: DEFAULT_GESTURE_CONTROL,
   })
 
   const lastStateRef = useRef<GestureState>(state)
 
-  const pushState = (next: GestureState): void => {
+  const pushState = useCallback((next: GestureState): void => {
     const prev = lastStateRef.current
+    const sameControl =
+      Math.abs(prev.gestureControl.power - next.gestureControl.power) < 0.003 &&
+      Math.abs(prev.gestureControl.speed - next.gestureControl.speed) < 0.003 &&
+      prev.gestureControl.lastSampleAt === next.gestureControl.lastSampleAt
+
     if (
       prev.phase === next.phase &&
       prev.statusText === next.statusText &&
-      prev.error === next.error
+      prev.error === next.error &&
+      sameControl
     ) {
       return
     }
 
     lastStateRef.current = next
     setState(next)
-  }
+  }, [])
 
   useEffect(() => {
     if (!enabled) {
+      pushState({
+        phase: 'disabled',
+        statusText: 'Camera is off. Use manual toss.',
+        gestureControl: lastStateRef.current.gestureControl,
+      })
       return
     }
 
@@ -343,11 +428,39 @@ export function useHandGestureToss({
     let stage: 'await_open' | 'await_fist' = 'await_open'
     let armedAt = 0
     let cooldownUntil = 0
+    let liveControl = lastStateRef.current.gestureControl
+    let previousSample: MotionSample | null = null
 
     // simple debounce: require pose to be stable for a few consecutive frames
     let lastPose: HandPose = 'unknown'
     let stableCount = 0
     const requireStableFrames = 3
+
+    const publish = (
+      phase: GesturePhase,
+      statusText: string,
+      error?: string,
+    ): void => {
+      pushState({
+        phase,
+        statusText,
+        error,
+        gestureControl: liveControl,
+      })
+    }
+
+    const resetSampling = (): void => {
+      previousSample = null
+    }
+
+    const sampleControl = (
+      landmarks: NormalizedLandmark[],
+      at: number,
+    ): void => {
+      const nextSample = measureMotionSample(landmarks, at)
+      liveControl = updateGestureControl(previousSample, nextSample, liveControl)
+      previousSample = nextSample
+    }
 
     const detect = (): void => {
       if (cancelled) {
@@ -356,10 +469,7 @@ export function useHandGestureToss({
 
       const video = videoRef.current
       if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        pushState({
-          phase: 'ready',
-          statusText: 'Waiting for camera frames...',
-        })
+        publish('ready', 'Waiting for camera frames...')
         rafId = window.requestAnimationFrame(detect)
         return
       }
@@ -367,10 +477,7 @@ export function useHandGestureToss({
       const now = performance.now()
 
       if (now < cooldownUntil) {
-        pushState({
-          phase: 'cooldown',
-          statusText: 'Gesture accepted. Cooldown...',
-        })
+        publish('cooldown', 'Gesture accepted. Cooldown...')
         rafId = window.requestAnimationFrame(detect)
         return
       }
@@ -379,10 +486,17 @@ export function useHandGestureToss({
       const landmarks = result?.landmarks?.[0]
 
       if (!landmarks) {
-        pushState({
-          phase: 'ready',
-          statusText: 'No hand detected. Show open palm.',
-        })
+        resetSampling()
+        if (stage === 'await_fist') {
+          if (now - armedAt > armTimeoutMs) {
+            stage = 'await_open'
+            publish('ready', 'Gesture timed out. Show open palm again.')
+          } else {
+            publish('armed', 'Hand lost. Keep your hand in frame, then close fist.')
+          }
+        } else {
+          publish('ready', 'No hand detected. Show open palm.')
+        }
         rafId = window.requestAnimationFrame(detect)
         return
       }
@@ -402,15 +516,14 @@ export function useHandGestureToss({
         if (pose === 'open' && isStable) {
           stage = 'await_fist'
           armedAt = now
-          pushState({
-            phase: 'armed',
-            statusText: 'Open palm captured. Close fist to toss.',
-          })
+          sampleControl(landmarks, now)
+          publish(
+            'armed',
+            'Open palm captured. Move hand for power/speed, then close fist.',
+          )
         } else {
-          pushState({
-            phase: 'ready',
-            statusText: 'Show open palm to arm gesture toss.',
-          })
+          resetSampling()
+          publish('ready', 'Show open palm to arm gesture toss.')
         }
         rafId = window.requestAnimationFrame(detect)
         return
@@ -419,32 +532,26 @@ export function useHandGestureToss({
       if (pose === 'fist' && isStable) {
         stage = 'await_open'
         cooldownUntil = now + cooldownMs
-        pushState({
-          phase: 'cooldown',
-          statusText: 'Fist detected. Toss triggered.',
-        })
-        onGestureTrigger()
+        resetSampling()
+        publish('cooldown', 'Fist detected. Toss triggered.')
+        onGestureTrigger({ ...liveControl })
       } else if (now - armedAt > armTimeoutMs) {
         stage = 'await_open'
-        pushState({
-          phase: 'ready',
-          statusText: 'Gesture timed out. Show open palm again.',
-        })
+        resetSampling()
+        publish('ready', 'Gesture timed out. Show open palm again.')
       } else {
-        pushState({
-          phase: 'armed',
-          statusText: 'Now close your fist to confirm toss.',
-        })
+        sampleControl(landmarks, now)
+        publish(
+          'armed',
+          'Move hand up for height, down for spin speed, then close fist.',
+        )
       }
 
       rafId = window.requestAnimationFrame(detect)
     }
 
     const init = async (): Promise<void> => {
-      pushState({
-        phase: 'loading',
-        statusText: 'Loading MediaPipe hand model...',
-      })
+      publish('loading', 'Loading MediaPipe hand model...')
 
       try {
         const resolvedAssets = resolveVisionAssetConfig(visionConfig)
@@ -455,10 +562,7 @@ export function useHandGestureToss({
             return
           }
 
-          pushState({
-            phase: 'loading',
-            statusText: `Loading MediaPipe runtime from ${wasmBasePath}`,
-          })
+          publish('loading', `Loading MediaPipe runtime from ${wasmBasePath}`)
 
           try {
             await probeWasmBase(wasmBasePath)
@@ -471,10 +575,7 @@ export function useHandGestureToss({
                 return
               }
 
-              pushState({
-                phase: 'loading',
-                statusText: `Loading hand model from ${modelAssetUrl}`,
-              })
+              publish('loading', `Loading hand model from ${modelAssetUrl}`)
 
               try {
                 await probeFetchableAsset(modelAssetUrl, 'MediaPipe model asset')
@@ -498,10 +599,7 @@ export function useHandGestureToss({
                   return
                 }
 
-                pushState({
-                  phase: 'ready',
-                  statusText: 'Gesture control ready. Show open palm.',
-                })
+                publish('ready', 'Gesture control ready. Show open palm.')
 
                 detect()
                 return
@@ -524,11 +622,7 @@ export function useHandGestureToss({
       } catch (error) {
         const message = formatError(error)
 
-        pushState({
-          phase: 'error',
-          statusText: 'Gesture detector unavailable.',
-          error: message,
-        })
+        publish('error', 'Gesture detector unavailable.', message)
       }
     }
 
@@ -541,7 +635,7 @@ export function useHandGestureToss({
       }
       handLandmarker?.close()
     }
-  }, [enabled, onGestureTrigger, videoRef, cooldownMs, armTimeoutMs, visionConfig])
+  }, [enabled, onGestureTrigger, videoRef, cooldownMs, armTimeoutMs, visionConfig, pushState])
 
   return state
 }
