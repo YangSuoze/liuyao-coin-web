@@ -1,4 +1,10 @@
-import { DEFAULT_APP_CONFIG, type AppConfig, type HexagramContentMap, type PromptTemplates } from './types'
+import {
+  DEFAULT_APP_CONFIG,
+  type AppConfig,
+  type HexagramContentMap,
+  type PromptTemplates,
+  type VisionConfig,
+} from './types'
 
 const CONFIG_PATH = '/config.json'
 
@@ -41,11 +47,13 @@ function normalizeConfig(raw: unknown): AppConfig {
       ? (root.llm as Record<string, unknown>)
       : {}
 
-
-
   const promptsRoot =
     root.prompts && typeof root.prompts === 'object'
       ? (root.prompts as Record<string, unknown>)
+      : {}
+  const visionRoot =
+    root.vision && typeof root.vision === 'object'
+      ? (root.vision as Record<string, unknown>)
       : {}
 
   const prompts: PromptTemplates = {
@@ -57,6 +65,18 @@ function normalizeConfig(raw: unknown): AppConfig {
       typeof promptsRoot.userSuffix === 'string'
         ? promptsRoot.userSuffix
         : DEFAULT_APP_CONFIG.prompts?.userSuffix,
+  }
+  const vision: VisionConfig = {
+    wasmBaseUrl:
+      typeof visionRoot.wasmBaseUrl === 'string' &&
+      visionRoot.wasmBaseUrl.trim().length > 0
+        ? visionRoot.wasmBaseUrl.trim()
+        : undefined,
+    modelAssetUrl:
+      typeof visionRoot.modelAssetUrl === 'string' &&
+      visionRoot.modelAssetUrl.trim().length > 0
+        ? visionRoot.modelAssetUrl.trim()
+        : undefined,
   }
 
   return {
@@ -73,6 +93,7 @@ function normalizeConfig(raw: unknown): AppConfig {
     },
     hexagrams: sanitizeHexagramMap(root.hexagrams),
     prompts,
+    vision,
   }
 }
 

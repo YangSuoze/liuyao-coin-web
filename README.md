@@ -40,11 +40,20 @@ Edit `public/config.json`:
     "system": "...",
     "userSuffix": ""
   },
+  "vision": {
+    "wasmBaseUrl": "/mediapipe-wasm/",
+    "modelAssetUrl": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+  },
   "hexagrams": {}
 }
 ```
 
 You can customize prompts via `prompts.system` and `prompts.userSuffix` without changing code.
+Gesture assets can be overridden in `vision.*` or by env vars:
+- `VITE_GESTURE_WASM_BASE_URL`
+- `VITE_GESTURE_MODEL_ASSET_URL`
+
+`npm i` will run a postinstall step that copies local wasm files to `public/mediapipe-wasm/`.
 
 The client will call:
 - `POST {baseUrl}/v1/chat/completions`
@@ -82,17 +91,21 @@ npm i
 npm run dev
 ```
 
-### 配置 LLM
+### 配置
 
 编辑 `public/config.json`：
 
 - `llm.baseUrl`：比如 `https://api.openai.com`
 - `llm.apiKey`：你的 key（默认留空，不提交到 git）
 - `llm.model`：模型名
+- `vision.wasmBaseUrl`：MediaPipe wasm 基础路径（建议 `/mediapipe-wasm/`，注意结尾 `/`）
+- `vision.modelAssetUrl`：手部模型地址（建议 `https://...`）
 
 调用路径：`{baseUrl}/v1/chat/completions`
 
 你也可以在 `prompts.system / prompts.userSuffix` 里自定义系统提示词与附加要求（无需改代码）。
+你也可以用环境变量覆盖手势资源地址：`VITE_GESTURE_WASM_BASE_URL`、`VITE_GESTURE_MODEL_ASSET_URL`。
+`npm i` 后会自动把本地 wasm 复制到 `public/mediapipe-wasm/`。
 
 ### 构建
 

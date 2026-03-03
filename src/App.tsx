@@ -222,6 +222,7 @@ export default function App() {
     enabled: cameraEnabled,
     videoRef,
     onGestureTrigger,
+    visionConfig: config.vision,
   })
 
   const resetSession = useCallback(() => {
