@@ -279,7 +279,7 @@ export function useHandGestureToss({
       }
       handLandmarker?.close()
     }
-  }, [enabled, onGestureTrigger, videoRef])
+  }, [enabled, onGestureTrigger, videoRef, cooldownMs, armTimeoutMs])
 
   return state
 }
