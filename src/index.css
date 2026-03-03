@@ -1,0 +1,47 @@
+:root {
+  --paper: #f7efe1;
+  --paper-soft: #fbf7f0;
+  --ink: #2a2114;
+  --ink-soft: #5f5139;
+  --accent: #936f1f;
+  --accent-strong: #734f08;
+  --danger: #b42318;
+  --line: #e4d2b1;
+
+  --font-serif: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+  --font-sans: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
+
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, #ffefc7 0%, transparent 42%),
+    radial-gradient(circle at 90% 85%, #f9db9b 0%, transparent 36%),
+    linear-gradient(145deg, #fdf9f1, #f4ead8 62%, #f0dfbc);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}

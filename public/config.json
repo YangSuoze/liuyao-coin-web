@@ -1,0 +1,8 @@
+{
+  "llm": {
+    "baseUrl": "https://api.openai.com",
+    "apiKey": "",
+    "model": "gpt-4o-mini"
+  },
+  "hexagrams": {}
+}
