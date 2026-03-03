@@ -100,3 +100,11 @@ npm run dev
 npm run build
 npm run preview
 ```
+
+
+---
+
+## Notes / 说明
+
+- `public/config.json` 已预置了少量卦象占位文本（方便你马上体验）。你可以后续补全 64 卦内容。
+- `public/yao_texts.json` 提供了 6/7/8/9 四种爻值的简要释义（你可自行扩写）。
