@@ -1,4 +1,4 @@
-import { DEFAULT_APP_CONFIG, type AppConfig, type HexagramContentMap } from './types'
+import { DEFAULT_APP_CONFIG, type AppConfig, type HexagramContentMap, type PromptTemplates } from './types'
 
 const CONFIG_PATH = '/config.json'
 
@@ -41,6 +41,24 @@ function normalizeConfig(raw: unknown): AppConfig {
       ? (root.llm as Record<string, unknown>)
       : {}
 
+
+
+  const promptsRoot =
+    root.prompts && typeof root.prompts === 'object'
+      ? (root.prompts as Record<string, unknown>)
+      : {}
+
+  const prompts: PromptTemplates = {
+    system:
+      typeof promptsRoot.system === 'string' && promptsRoot.system.trim().length > 0
+        ? promptsRoot.system.trim()
+        : DEFAULT_APP_CONFIG.prompts?.system,
+    userSuffix:
+      typeof promptsRoot.userSuffix === 'string'
+        ? promptsRoot.userSuffix
+        : DEFAULT_APP_CONFIG.prompts?.userSuffix,
+  }
+
   return {
     llm: {
       baseUrl:
@@ -54,6 +72,7 @@ function normalizeConfig(raw: unknown): AppConfig {
           : DEFAULT_APP_CONFIG.llm.model,
     },
     hexagrams: sanitizeHexagramMap(root.hexagrams),
+    prompts,
   }
 }
 

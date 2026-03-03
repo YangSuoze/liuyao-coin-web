@@ -7,6 +7,7 @@ interface BuildPromptOptions {
   result: HexagramComputation
   mainContent?: HexagramContent
   changedContent?: HexagramContent
+  userSuffix?: string
 }
 
 function formatContent(label: string, content?: HexagramContent): string {
@@ -26,6 +27,7 @@ export function buildInterpretationPrompt({
   result,
   mainContent,
   changedContent,
+  userSuffix,
 }: BuildPromptOptions): string {
   const lines = [...result.lines]
     .sort((a, b) => a.index - b.index)
@@ -61,5 +63,6 @@ export function buildInterpretationPrompt({
     '2) 关键矛盾与趋势',
     '3) 对用户问题的判断（含不确定性）',
     '4) 3条可执行建议',
+    userSuffix?.trim() ? `\n附加要求：\n${userSuffix.trim()}` : '',
   ].join('\n')
 }

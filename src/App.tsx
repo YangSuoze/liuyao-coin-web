@@ -247,9 +247,14 @@ export default function App() {
         result,
         mainContent: config.hexagrams[result.main.binary],
         changedContent: config.hexagrams[result.changed.binary],
+        userSuffix: config.prompts?.userSuffix,
       })
 
-      const text = await requestInterpretation(config.llm, prompt)
+      const text = await requestInterpretation(
+        config.llm,
+        prompt,
+        config.prompts?.system,
+      )
       setInterpretation(text)
     } catch (error) {
       const message =

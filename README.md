@@ -36,9 +36,15 @@ Edit `public/config.json`:
     "apiKey": "",
     "model": "gpt-4o-mini"
   },
+  "prompts": {
+    "system": "...",
+    "userSuffix": ""
+  },
   "hexagrams": {}
 }
 ```
+
+You can customize prompts via `prompts.system` and `prompts.userSuffix` without changing code.
 
 The client will call:
 - `POST {baseUrl}/v1/chat/completions`
@@ -85,6 +91,8 @@ npm run dev
 - `llm.model`：模型名
 
 调用路径：`{baseUrl}/v1/chat/completions`
+
+你也可以在 `prompts.system / prompts.userSuffix` 里自定义系统提示词与附加要求（无需改代码）。
 
 ### 构建
 

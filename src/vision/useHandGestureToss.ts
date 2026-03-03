@@ -23,12 +23,17 @@ interface UseHandGestureTossOptions {
   enabled: boolean
   videoRef: RefObject<HTMLVideoElement | null>
   onGestureTrigger: () => void
+  cooldownMs?: number
+  armTimeoutMs?: number
 }
 
 const WASM_BASE =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm'
 const MODEL_ASSET_PATH =
   'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+
+const DEFAULT_COOLDOWN_MS = 2000
+const DEFAULT_ARM_TIMEOUT_MS = 2800
 
 function distance(a: NormalizedLandmark, b: NormalizedLandmark): number {
   const dx = a.x - b.x
@@ -86,6 +91,8 @@ export function useHandGestureToss({
   enabled,
   videoRef,
   onGestureTrigger,
+  cooldownMs = DEFAULT_COOLDOWN_MS,
+  armTimeoutMs = DEFAULT_ARM_TIMEOUT_MS,
 }: UseHandGestureTossOptions): GestureState {
   const [state, setState] = useState<GestureState>({
     phase: 'disabled',
@@ -120,6 +127,11 @@ export function useHandGestureToss({
     let stage: 'await_open' | 'await_fist' = 'await_open'
     let armedAt = 0
     let cooldownUntil = 0
+
+    // simple debounce: require pose to be stable for a few consecutive frames
+    let lastPose: HandPose = 'unknown'
+    let stableCount = 0
+    const requireStableFrames = 3
 
     const detect = (): void => {
       if (cancelled) {
@@ -161,8 +173,17 @@ export function useHandGestureToss({
 
       const pose = classifyHandPose(landmarks)
 
+      if (pose === lastPose) {
+        stableCount += 1
+      } else {
+        lastPose = pose
+        stableCount = 1
+      }
+
+      const isStable = stableCount >= requireStableFrames
+
       if (stage === 'await_open') {
-        if (pose === 'open') {
+        if (pose === 'open' && isStable) {
           stage = 'await_fist'
           armedAt = now
           pushState({
@@ -179,15 +200,15 @@ export function useHandGestureToss({
         return
       }
 
-      if (pose === 'fist') {
+      if (pose === 'fist' && isStable) {
         stage = 'await_open'
-        cooldownUntil = now + 1500
+        cooldownUntil = now + cooldownMs
         pushState({
           phase: 'cooldown',
           statusText: 'Fist detected. Toss triggered.',
         })
         onGestureTrigger()
-      } else if (now - armedAt > 2500) {
+      } else if (now - armedAt > armTimeoutMs) {
         stage = 'await_open'
         pushState({
           phase: 'ready',

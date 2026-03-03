@@ -17,7 +17,7 @@ interface OpenAIChatCompletionResponse {
   }
 }
 
-const SYSTEM_PROMPT =
+const DEFAULT_SYSTEM_PROMPT =
   '你是严谨的《易经》解读助手。请结合用户问题、主卦、变卦与爻象给出结构化分析，避免绝对化结论，并给出可执行建议。'
 
 function trimTrailingSlash(url: string): string {
@@ -27,6 +27,7 @@ function trimTrailingSlash(url: string): string {
 export async function requestInterpretation(
   config: LlmConfig,
   userPrompt: string,
+  systemPrompt: string = DEFAULT_SYSTEM_PROMPT,
   signal?: AbortSignal,
 ): Promise<string> {
   if (!config.baseUrl || !config.model) {
@@ -41,7 +42,7 @@ export async function requestInterpretation(
     model: config.model,
     temperature: 0.7,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
   }
