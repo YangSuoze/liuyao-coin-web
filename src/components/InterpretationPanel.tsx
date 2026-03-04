@@ -4,6 +4,7 @@ interface InterpretationPanelProps {
   error?: string
   interpretation: string
   onGenerate: () => void
+  onCancel?: () => void
 }
 
 export function InterpretationPanel({
@@ -12,27 +13,34 @@ export function InterpretationPanel({
   error,
   interpretation,
   onGenerate,
+  onCancel,
 }: InterpretationPanelProps) {
   return (
     <section className="panel">
-      <div className="interpretation-header">
-        <h2>AI 解读</h2>
+      <h2>AI Interpretation</h2>
+      <p className="muted">
+        Streaming is enabled. Tokens will appear as the model responds.
+      </p>
+
+      <div className="interpret-actions">
         <button
           type="button"
           className="action-btn"
           disabled={!canGenerate || loading}
           onClick={onGenerate}
         >
-          {loading ? '生成中...' : '生成解读'}
+          {loading ? 'Generating…' : 'Generate'}
         </button>
+        {loading && onCancel ? (
+          <button type="button" className="ghost-btn" onClick={onCancel}>
+            Stop
+          </button>
+        ) : null}
       </div>
 
-      {!canGenerate ? (
-        <p className="muted">完成六次 Toss 后可生成解读</p>
-      ) : null}
-
       {error ? <p className="error-text">{error}</p> : null}
-      {interpretation ? <pre className="interpretation-output">{interpretation}</pre> : null}
+
+      <pre className="interpretation-output">{interpretation || '…'}</pre>
     </section>
   )
 }

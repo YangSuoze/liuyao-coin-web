@@ -11,6 +11,7 @@ import { loadAppConfig } from './config/loadConfig'
 import { DEFAULT_APP_CONFIG, type AppConfig } from './config/types'
 import { buildInterpretationPrompt } from './llm/prompt'
 import { requestInterpretation } from './llm/openaiClient'
+import { requestInterpretationStream } from './llm/openaiStream'
 import { coinsToLine, createFairPerturbedRng, randomCoinSide, tossThreeCoins } from './logic/coin'
 import { computeHexagram } from './logic/hexagram'
 import type { CoinSide, TossRecord } from './logic/types'
@@ -218,6 +219,7 @@ export default function App() {
   const spinTimerRef = useRef<number | null>(null)
 
   const [interpretation, setInterpretation] = useState('')
+  const interpretAbortRef = useRef<AbortController | null>(null)
   const [interpretationError, setInterpretationError] = useState<string>()
   const [loadingInterpretation, setLoadingInterpretation] = useState(false)
   const [lastTossEntropy, setLastTossEntropy] = useState<TossEntropyDebug>()
@@ -488,6 +490,12 @@ export default function App() {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
   }, [])
 
+  const cancelInterpretation = useCallback(() => {
+    interpretAbortRef.current?.abort()
+    interpretAbortRef.current = null
+    setLoadingInterpretation(false)
+  }, [])
+
   const generateInterpretation = useCallback(async () => {
     if (!result || loadingInterpretation) {
       return
@@ -505,12 +513,22 @@ export default function App() {
         userSuffix: config.prompts?.userSuffix,
       })
 
-      const text = await requestInterpretation(
-        config.llm,
-        prompt,
-        config.prompts?.system,
-      )
-      setInterpretation(text)
+      setInterpretation('')
+
+      const controller = new AbortController()
+      interpretAbortRef.current = controller
+
+      await requestInterpretationStream({
+        config: config.llm,
+        userPrompt: prompt,
+        systemPrompt: config.prompts?.system ?? '',
+        onToken: (chunk: string) => {
+          setInterpretation((prev) => prev + chunk)
+        },
+        signal: controller.signal,
+      })
+
+      interpretAbortRef.current = null
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to generate interpretation'
@@ -715,6 +733,7 @@ export default function App() {
                   error={interpretationError}
                   interpretation={interpretation}
                   onGenerate={generateInterpretation}
+                      onCancel={cancelInterpretation}
                 />
               </div>
             </details>

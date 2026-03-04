@@ -1089,3 +1089,6 @@ h3 {
     scroll-behavior: auto !important;
   }
 }
+
+.interpret-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.interpretation-output{margin:14px 0 0;padding:14px 16px;border-radius:14px;border:1px solid var(--surface-border);background:color-mix(in oklab, var(--surface-0) 78%, transparent);white-space:pre-wrap;line-height:1.6;color:var(--ink);min-height:160px;}
