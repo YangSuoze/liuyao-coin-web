@@ -19,6 +19,17 @@ interface CoinTossPanelProps {
     power: number
     speed: number
   }
+  lastTossEntropy?: {
+    source: 'manual' | 'gesture'
+    seedHex: string
+    power: number
+    speed: number
+    verticalVelocity: number
+    velocityEnergy: number
+    palmSpanMean: number
+    palmSpanRange: number
+    sampleCount: number
+  }
   gestureControl: GestureControl
   cameraEnabled: boolean
   onManualPowerChange: (power: number) => void
@@ -37,6 +48,7 @@ export function CoinTossPanel({
   tossAnimation,
   manualControl,
   activeTossControl,
+  lastTossEntropy,
   gestureControl,
   cameraEnabled,
   onManualPowerChange,
@@ -111,6 +123,29 @@ export function CoinTossPanel({
             : '摄像头关闭，使用手动参数'}
         </span>
       </div>
+
+      {lastTossEntropy ? (
+        <section className="debug-panel" aria-live="polite">
+          <p className="debug-title">Entropy Debug</p>
+          <p className="debug-line">
+            seed: <code>{lastTossEntropy.seedHex}</code> · source:{' '}
+            {lastTossEntropy.source}
+          </p>
+          <p className="debug-line">
+            power/speed: {Math.round(lastTossEntropy.power * 100)}% /{' '}
+            {Math.round(lastTossEntropy.speed * 100)}%
+          </p>
+          <p className="debug-line">
+            velocity: {lastTossEntropy.verticalVelocity.toFixed(4)} · energy:{' '}
+            {lastTossEntropy.velocityEnergy.toFixed(4)}
+          </p>
+          <p className="debug-line">
+            palmSpan mean/range: {lastTossEntropy.palmSpanMean.toFixed(4)} /{' '}
+            {lastTossEntropy.palmSpanRange.toFixed(4)} · samples:{' '}
+            {lastTossEntropy.sampleCount}
+          </p>
+        </section>
+      ) : null}
 
       <div className="slider-grid">
         <label className="slider-card" htmlFor="manual-power">

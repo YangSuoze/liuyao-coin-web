@@ -1,27 +1,64 @@
 :root {
-  --bg-0: #ecf2fb;
-  --bg-1: #f8fbff;
-  --ink: #1a2433;
-  --ink-soft: #4a5f7e;
-  --line: rgba(136, 158, 192, 0.38);
-  --line-strong: rgba(158, 180, 212, 0.62);
-  --danger: #bc2f2f;
+  --bg-page-top: #f8fbff;
+  --bg-page-bottom: #edf2fb;
+  --bg-orb-1: rgba(214, 232, 255, 0.55);
+  --bg-orb-2: rgba(193, 218, 255, 0.4);
+  --bg-orb-3: rgba(225, 236, 255, 0.46);
 
-  --font-display: 'SF Pro Display', 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB',
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-sans: 'SF Pro Text', 'SF Pro Display', 'PingFang SC', -apple-system,
-    BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --surface-0: rgba(255, 255, 255, 0.64);
+  --surface-1: rgba(255, 255, 255, 0.79);
+  --surface-2: rgba(248, 252, 255, 0.92);
+  --surface-border: rgba(145, 171, 212, 0.3);
+  --surface-border-strong: rgba(139, 167, 213, 0.48);
 
+  --ink: #10223f;
+  --ink-soft: #516583;
+  --ink-muted: #6f7e95;
+  --accent: #2972ff;
+  --accent-strong: #165de3;
+  --accent-soft: rgba(41, 114, 255, 0.14);
+  --danger: #bb2a2a;
+  --warning: #8f6420;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 52px;
+  --space-10: 68px;
+  --space-fluid: clamp(16px, 3.4vw, 40px);
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --shadow-soft: 0 16px 32px rgba(17, 32, 55, 0.08);
+  --shadow-mid: 0 26px 58px rgba(20, 40, 70, 0.13);
+  --shadow-focus: 0 0 0 4px rgba(41, 114, 255, 0.16);
+
+  --font-display: 'SF Pro Display', 'Avenir Next', 'Segoe UI Variable Display',
+    'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-sans: 'SF Pro Text', 'Avenir Next', 'Segoe UI Variable Text', 'PingFang SC',
+    'Hiragino Sans GB', sans-serif;
+
+  color-scheme: light;
   font-family: var(--font-sans);
   color: var(--ink);
-  line-height: 1.5;
+  line-height: 1.55;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -35,10 +72,11 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 14% 10%, rgba(255, 255, 255, 0.9), transparent 36%),
-    radial-gradient(circle at 86% 8%, rgba(210, 228, 255, 0.76), transparent 40%),
-    radial-gradient(circle at 75% 92%, rgba(221, 239, 255, 0.56), transparent 42%),
-    linear-gradient(168deg, var(--bg-1) 0%, var(--bg-0) 58%, #e4edf9 100%);
+    radial-gradient(circle at 12% 12%, rgba(255, 255, 255, 0.95), transparent 36%),
+    radial-gradient(circle at 83% 8%, var(--bg-orb-1), transparent 44%),
+    radial-gradient(circle at 88% 84%, var(--bg-orb-2), transparent 45%),
+    radial-gradient(circle at 18% 88%, var(--bg-orb-3), transparent 40%),
+    linear-gradient(162deg, var(--bg-page-top) 0%, var(--bg-page-bottom) 68%, #e9f0fc 100%);
 }
 
 button,

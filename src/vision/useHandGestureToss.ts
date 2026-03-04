@@ -25,12 +25,32 @@ export interface GestureControl {
   power: number
   speed: number
   lastSampleAt: number
+  verticalVelocity: number
+  palmSpan: number
+}
+
+export interface GestureEntropySnapshot {
+  seed: number
+  seedHex: string
+  power: number
+  speed: number
+  verticalVelocity: number
+  velocityEnergy: number
+  palmSpanMean: number
+  palmSpanRange: number
+  sampleCount: number
+  capturedAt: number
+}
+
+export interface GestureTriggerPayload {
+  control: GestureControl
+  entropy: GestureEntropySnapshot
 }
 
 interface UseHandGestureTossOptions {
   enabled: boolean
   videoRef: RefObject<HTMLVideoElement | null>
-  onGestureTrigger: (control: GestureControl) => void
+  onGestureTrigger: (payload: GestureTriggerPayload) => void
   cooldownMs?: number
   armTimeoutMs?: number
   visionConfig?: VisionConfig
@@ -52,6 +72,8 @@ const DEFAULT_GESTURE_CONTROL: GestureControl = {
   power: 0.55,
   speed: 0.5,
   lastSampleAt: 0,
+  verticalVelocity: 0,
+  palmSpan: 0.17,
 }
 
 type VisionEnvKey = typeof ENV_WASM_BASE_URL | typeof ENV_MODEL_ASSET_URL
@@ -155,13 +177,14 @@ function updateGestureControl(
   currentControl: GestureControl,
 ): GestureControl {
   const proximity = clamp01((nextSample.palmSpan - 0.09) / 0.16)
+  let verticalVelocity = 0
 
   let rawPower = clamp01(0.34 + proximity * 0.46)
   let rawSpeed = clamp01(0.32 + proximity * 0.36)
 
   if (previousSample) {
     const dt = Math.max(1, nextSample.at - previousSample.at)
-    const verticalVelocity = (previousSample.palmCenterY - nextSample.palmCenterY) / dt
+    verticalVelocity = (previousSample.palmCenterY - nextSample.palmCenterY) / dt
     const upward = clamp01(Math.max(0, verticalVelocity) * 220)
     const downward = clamp01(Math.max(0, -verticalVelocity) * 220)
     const movementEnergy = clamp01((upward + downward) * 0.5)
@@ -176,6 +199,94 @@ function updateGestureControl(
     power: clamp01(lerp(currentControl.power, rawPower, alpha)),
     speed: clamp01(lerp(currentControl.speed, rawSpeed, alpha)),
     lastSampleAt: Date.now(),
+    verticalVelocity: lerp(currentControl.verticalVelocity, verticalVelocity, 0.34),
+    palmSpan: lerp(currentControl.palmSpan, nextSample.palmSpan, 0.34),
+  }
+}
+
+function mixSeed(seed: number, value: number): number {
+  let mixed = (seed ^ (value >>> 0)) >>> 0
+  mixed = Math.imul(mixed ^ (mixed >>> 16), 0x85ebca6b) >>> 0
+  mixed = Math.imul(mixed ^ (mixed >>> 13), 0xc2b2ae35) >>> 0
+  return (mixed ^ (mixed >>> 16)) >>> 0
+}
+
+function quantize(value: number, scale: number): number {
+  return Math.round(value * scale) | 0
+}
+
+function deriveGestureEntropySnapshot(
+  control: GestureControl,
+  history: MotionSample[],
+): GestureEntropySnapshot {
+  const samples = history.slice(-48)
+  const velocities: number[] = []
+
+  for (let idx = 1; idx < samples.length; idx += 1) {
+    const previous = samples[idx - 1]
+    const current = samples[idx]
+    const dt = Math.max(1, current.at - previous.at)
+    velocities.push((previous.palmCenterY - current.palmCenterY) / dt)
+  }
+
+  const palmSpanMean =
+    samples.length > 0
+      ? samples.reduce((sum, sample) => sum + sample.palmSpan, 0) / samples.length
+      : control.palmSpan
+
+  const palmSpanMin = samples.reduce(
+    (min, sample) => Math.min(min, sample.palmSpan),
+    Number.POSITIVE_INFINITY,
+  )
+  const palmSpanMax = samples.reduce(
+    (max, sample) => Math.max(max, sample.palmSpan),
+    Number.NEGATIVE_INFINITY,
+  )
+
+  const palmSpanRange =
+    Number.isFinite(palmSpanMin) && Number.isFinite(palmSpanMax)
+      ? palmSpanMax - palmSpanMin
+      : 0
+
+  const latestVelocity =
+    velocities.length > 0 ? velocities[velocities.length - 1] : control.verticalVelocity
+  const velocityEnergy =
+    velocities.length > 0
+      ? velocities.reduce((sum, velocity) => sum + Math.abs(velocity), 0) /
+        velocities.length
+      : Math.abs(control.verticalVelocity)
+
+  let seed = 0x811c9dc5
+  seed = mixSeed(seed, quantize(control.power, 1_000_000))
+  seed = mixSeed(seed, quantize(control.speed, 1_000_000))
+  seed = mixSeed(seed, quantize(latestVelocity, 1_000_000_000))
+  seed = mixSeed(seed, quantize(velocityEnergy, 1_000_000_000))
+  seed = mixSeed(seed, quantize(palmSpanMean, 1_000_000))
+  seed = mixSeed(seed, quantize(palmSpanRange, 1_000_000))
+  seed = mixSeed(seed, samples.length)
+
+  for (let idx = 0; idx < samples.length; idx += 1) {
+    const sample = samples[idx]
+    seed = mixSeed(seed, quantize(sample.palmCenterY, 1_000_000))
+    seed = mixSeed(seed, quantize(sample.palmSpan, 1_000_000))
+    if (idx > 0) {
+      const delta = sample.at - samples[idx - 1].at
+      seed = mixSeed(seed, quantize(delta, 1_000))
+    }
+  }
+
+  const normalizedSeed = seed === 0 ? 0x6d2b79f5 : seed
+  return {
+    seed: normalizedSeed,
+    seedHex: normalizedSeed.toString(16).padStart(8, '0').toUpperCase(),
+    power: control.power,
+    speed: control.speed,
+    verticalVelocity: latestVelocity,
+    velocityEnergy,
+    palmSpanMean,
+    palmSpanRange,
+    sampleCount: samples.length,
+    capturedAt: Date.now(),
   }
 }
 
@@ -396,6 +507,10 @@ export function useHandGestureToss({
     const sameControl =
       Math.abs(prev.gestureControl.power - next.gestureControl.power) < 0.003 &&
       Math.abs(prev.gestureControl.speed - next.gestureControl.speed) < 0.003 &&
+      Math.abs(
+        prev.gestureControl.verticalVelocity - next.gestureControl.verticalVelocity,
+      ) < 0.00008 &&
+      Math.abs(prev.gestureControl.palmSpan - next.gestureControl.palmSpan) < 0.0005 &&
       prev.gestureControl.lastSampleAt === next.gestureControl.lastSampleAt
 
     if (
@@ -430,6 +545,7 @@ export function useHandGestureToss({
     let cooldownUntil = 0
     let liveControl = lastStateRef.current.gestureControl
     let previousSample: MotionSample | null = null
+    let motionHistory: MotionSample[] = []
 
     // simple debounce: require pose to be stable for a few consecutive frames
     let lastPose: HandPose = 'unknown'
@@ -451,6 +567,7 @@ export function useHandGestureToss({
 
     const resetSampling = (): void => {
       previousSample = null
+      motionHistory = []
     }
 
     const sampleControl = (
@@ -460,6 +577,10 @@ export function useHandGestureToss({
       const nextSample = measureMotionSample(landmarks, at)
       liveControl = updateGestureControl(previousSample, nextSample, liveControl)
       previousSample = nextSample
+      motionHistory.push(nextSample)
+      if (motionHistory.length > 64) {
+        motionHistory = motionHistory.slice(-64)
+      }
     }
 
     const detect = (): void => {
@@ -532,9 +653,13 @@ export function useHandGestureToss({
       if (pose === 'fist' && isStable) {
         stage = 'await_open'
         cooldownUntil = now + cooldownMs
+        const entropy = deriveGestureEntropySnapshot(liveControl, motionHistory)
         resetSampling()
         publish('cooldown', 'Fist detected. Toss triggered.')
-        onGestureTrigger({ ...liveControl })
+        onGestureTrigger({
+          control: { ...liveControl },
+          entropy,
+        })
       } else if (now - armedAt > armTimeoutMs) {
         stage = 'await_open'
         resetSampling()

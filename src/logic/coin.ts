@@ -1,5 +1,7 @@
 import type { CoinOutcome, CoinSide, LineKind, LineValue, YaoLine } from './types'
 
+const UINT32_MAX_PLUS_ONE = 4_294_967_296
+
 export function sideToValue(side: CoinSide): 2 | 3 {
   return side === 'heads' ? 3 : 2
 }
@@ -16,6 +18,38 @@ export function tossThreeCoins(rng: () => number = Math.random): CoinOutcome[] {
       value: sideToValue(side),
     }
   })
+}
+
+function normalizeSeed(seed: number): number {
+  const normalized = seed >>> 0
+  return normalized === 0 ? 0x6d2b79f5 : normalized
+}
+
+export function createSeededRng(seed: number): () => number {
+  let state = normalizeSeed(seed)
+
+  return () => {
+    state = (state + 0x9e3779b9) >>> 0
+    let mixed = state
+    mixed = Math.imul(mixed ^ (mixed >>> 16), 0x85ebca6b) >>> 0
+    mixed = Math.imul(mixed ^ (mixed >>> 13), 0xc2b2ae35) >>> 0
+    mixed = (mixed ^ (mixed >>> 16)) >>> 0
+    return mixed / UINT32_MAX_PLUS_ONE
+  }
+}
+
+export function createFairPerturbedRng(
+  seed: number,
+  baseRng: () => number = Math.random,
+): () => number {
+  const entropyRng = createSeededRng(seed)
+
+  return () => {
+    const baseSample = baseRng()
+    const entropySample = entropyRng()
+    const mixed = baseSample + entropySample
+    return mixed >= 1 ? mixed - 1 : mixed
+  }
 }
 
 function sumToLineValue(sum: number): LineValue {

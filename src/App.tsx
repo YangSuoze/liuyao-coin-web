@@ -10,10 +10,15 @@ import { loadAppConfig } from './config/loadConfig'
 import { DEFAULT_APP_CONFIG, type AppConfig } from './config/types'
 import { buildInterpretationPrompt } from './llm/prompt'
 import { requestInterpretation } from './llm/openaiClient'
-import { coinsToLine, randomCoinSide, tossThreeCoins } from './logic/coin'
+import { coinsToLine, createFairPerturbedRng, randomCoinSide, tossThreeCoins } from './logic/coin'
 import { computeHexagram } from './logic/hexagram'
 import type { CoinSide, TossRecord } from './logic/types'
-import { useHandGestureToss, type GestureControl } from './vision/useHandGestureToss'
+import {
+  useHandGestureToss,
+  type GestureControl,
+  type GestureEntropySnapshot,
+  type GestureTriggerPayload,
+} from './vision/useHandGestureToss'
 
 type AppView = 'toss' | 'result'
 
@@ -29,6 +34,20 @@ interface TossAnimationProfile {
   coinAnimation: CoinAnimationConfig
   tickIntervalMs: number
   ticks: number
+}
+
+interface TossEntropyDebug {
+  source: 'manual' | 'gesture'
+  seed: number
+  seedHex: string
+  power: number
+  speed: number
+  verticalVelocity: number
+  velocityEnergy: number
+  palmSpanMean: number
+  palmSpanRange: number
+  sampleCount: number
+  capturedAt: number
 }
 
 function clamp01(value: number): number {
@@ -52,35 +71,99 @@ function normalizeControl(control: TossControlInput): TossControlInput {
   }
 }
 
+function mixSeed(seed: number, value: number): number {
+  let mixed = (seed ^ (value >>> 0)) >>> 0
+  mixed = Math.imul(mixed ^ (mixed >>> 16), 0x85ebca6b) >>> 0
+  mixed = Math.imul(mixed ^ (mixed >>> 13), 0xc2b2ae35) >>> 0
+  return (mixed ^ (mixed >>> 16)) >>> 0
+}
+
+function toSeedHex(seed: number): string {
+  const normalized = seed >>> 0
+  return normalized.toString(16).padStart(8, '0').toUpperCase()
+}
+
+function createManualEntropySnapshot(
+  control: TossControlInput,
+  tossIndex: number,
+): TossEntropyDebug {
+  const now = Date.now()
+  let seed = 0x9e3779b9
+  seed = mixSeed(seed, Math.round(control.power * 1_000_000))
+  seed = mixSeed(seed, Math.round(control.speed * 1_000_000))
+  seed = mixSeed(seed, tossIndex)
+  seed = mixSeed(seed, now)
+
+  const normalizedSeed = seed === 0 ? 0x6d2b79f5 : seed
+  return {
+    source: 'manual',
+    seed: normalizedSeed,
+    seedHex: toSeedHex(normalizedSeed),
+    power: control.power,
+    speed: control.speed,
+    verticalVelocity: 0,
+    velocityEnergy: 0,
+    palmSpanMean: 0,
+    palmSpanRange: 0,
+    sampleCount: 0,
+    capturedAt: now,
+  }
+}
+
+function fromGestureEntropy(
+  source: 'manual' | 'gesture',
+  fallbackControl: TossControlInput,
+  entropy: GestureEntropySnapshot | undefined,
+  tossIndex: number,
+): TossEntropyDebug {
+  if (!entropy) {
+    return createManualEntropySnapshot(fallbackControl, tossIndex)
+  }
+
+  return {
+    source,
+    seed: entropy.seed,
+    seedHex: entropy.seedHex,
+    power: entropy.power,
+    speed: entropy.speed,
+    verticalVelocity: entropy.verticalVelocity,
+    velocityEnergy: entropy.velocityEnergy,
+    palmSpanMean: entropy.palmSpanMean,
+    palmSpanRange: entropy.palmSpanRange,
+    sampleCount: entropy.sampleCount,
+    capturedAt: entropy.capturedAt,
+  }
+}
+
 function buildTossAnimation(control: TossControlInput): TossAnimationProfile {
   const normalized = normalizeControl(control)
   const { power, speed } = normalized
 
-  const launchHeight = Math.round(82 + power * 138)
-  const spinDurationMs = Math.round(980 - speed * 540)
-  const rotateEndDeg = Math.round(1040 + speed * 1860)
+  const launchHeight = Math.round(110 + power * 320)
+  const spinDurationMs = Math.round(1480 - speed * 960)
+  const rotateEndDeg = Math.round(1280 + power * 1920 + speed * 5520)
 
   const easing =
     speed > 0.66
-      ? 'cubic-bezier(0.16, 0.92, 0.26, 1)'
+      ? 'cubic-bezier(0.13, 0.96, 0.22, 1)'
       : power > 0.68
-        ? 'cubic-bezier(0.14, 0.86, 0.24, 1)'
-        : 'cubic-bezier(0.2, 0.8, 0.28, 1)'
+        ? 'cubic-bezier(0.09, 0.9, 0.24, 1)'
+        : 'cubic-bezier(0.16, 0.82, 0.25, 1)'
 
-  const tickIntervalMs = Math.round(58 + (1 - speed) * 52)
-  const estimatedFlightMs = Math.round(700 + power * 430 - speed * 120)
+  const tickIntervalMs = Math.round(52 + (1 - speed) * 38)
+  const estimatedFlightMs = Math.round(860 + power * 780 - speed * 140)
 
   return {
     tickIntervalMs,
-    ticks: Math.max(7, Math.round(estimatedFlightMs / tickIntervalMs)),
+    ticks: Math.max(10, Math.round(estimatedFlightMs / tickIntervalMs)),
     coinAnimation: {
       launchHeight,
       spinDurationMs,
       easing,
-      rotateMidDeg: Math.round(rotateEndDeg * 0.44),
-      rotatePeakDeg: Math.round(rotateEndDeg * 0.78),
+      rotateMidDeg: Math.round(rotateEndDeg * 0.42),
+      rotatePeakDeg: Math.round(rotateEndDeg * 0.84),
       rotateEndDeg,
-      wobbleDeg: Math.round(9 + speed * 17),
+      wobbleDeg: Math.round(12 + speed * 22 + power * 8),
     },
   }
 }
@@ -114,6 +197,7 @@ export default function App() {
   const [interpretation, setInterpretation] = useState('')
   const [interpretationError, setInterpretationError] = useState<string>()
   const [loadingInterpretation, setLoadingInterpretation] = useState(false)
+  const [lastTossEntropy, setLastTossEntropy] = useState<TossEntropyDebug>()
 
   const lines = useMemo(() => records.map((record) => record.line), [records])
   const result = useMemo(() => {
@@ -231,18 +315,31 @@ export default function App() {
   }, [])
 
   const toss = useCallback(
-    (source: 'manual' | 'gesture', controlOverride?: TossControlInput) => {
+    (
+      source: 'manual' | 'gesture',
+      controlOverride?: TossControlInput,
+      entropyOverride?: GestureEntropySnapshot,
+    ) => {
       if (isAnimating || records.length >= 6) {
         return
       }
 
       const selectedControl = normalizeControl(controlOverride ?? manualControl)
       const animationProfile = buildTossAnimation(selectedControl)
+      const tossEntropy = fromGestureEntropy(
+        source,
+        selectedControl,
+        entropyOverride,
+        records.length + 1,
+      )
+      const rng = createFairPerturbedRng(tossEntropy.seed)
+      const finalCoins = tossThreeCoins(rng)
 
       setActiveTossControl(selectedControl)
       setCoinAnimation(animationProfile.coinAnimation)
       setIsAnimating(true)
       setLastTrigger(source)
+      setLastTossEntropy(tossEntropy)
       setInterpretation('')
       setInterpretationError(undefined)
 
@@ -264,7 +361,6 @@ export default function App() {
           spinTimerRef.current = null
         }
 
-        const finalCoins = tossThreeCoins()
         setCoinFaces(finalCoins.map((coin) => coin.side))
 
         setRecords((prev) => {
@@ -294,8 +390,8 @@ export default function App() {
     tossRef.current = toss
   }, [toss])
 
-  const onGestureTrigger = useCallback((control: GestureControl) => {
-    tossRef.current('gesture', control)
+  const onGestureTrigger = useCallback((payload: GestureTriggerPayload) => {
+    tossRef.current('gesture', payload.control, payload.entropy)
   }, [])
 
   const gestureState = useHandGestureToss({
@@ -335,6 +431,7 @@ export default function App() {
     setRecords([])
     setCoinFaces(INITIAL_COINS)
     setLastTrigger(undefined)
+    setLastTossEntropy(undefined)
     setInterpretation('')
     setInterpretationError(undefined)
     setLoadingInterpretation(false)
@@ -440,6 +537,7 @@ export default function App() {
                 manualControl={manualControl}
                 activeTossControl={activeTossControl}
                 gestureControl={gestureState.gestureControl}
+                lastTossEntropy={lastTossEntropy}
                 cameraEnabled={cameraEnabled}
                 onManualPowerChange={updateManualPower}
                 onManualSpeedChange={updateManualSpeed}
