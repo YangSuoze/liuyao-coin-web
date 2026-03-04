@@ -21,6 +21,9 @@ import {
 } from './vision/useHandGestureToss'
 
 type AppView = 'toss' | 'result'
+type ThemeMode = 'dark' | 'light'
+
+const THEME_STORAGE_KEY = 'liuyao-coin-theme'
 
 const INITIAL_COINS: CoinSide[] = ['heads', 'tails', 'heads']
 const INITIAL_MANUAL_CONTROL = {
@@ -48,6 +51,23 @@ interface TossEntropyDebug {
   palmSpanRange: number
   sampleCount: number
   capturedAt: number
+}
+
+function readInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'dark'
+  }
+
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+    if (stored === 'dark' || stored === 'light') {
+      return stored
+    }
+  } catch {
+    return 'dark'
+  }
+
+  return 'dark'
 }
 
 function clamp01(value: number): number {
@@ -170,6 +190,7 @@ function buildTossAnimation(control: TossControlInput): TossAnimationProfile {
 
 export default function App() {
   const [view, setView] = useState<AppView>('toss')
+  const [theme, setTheme] = useState<ThemeMode>(() => readInitialTheme())
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG)
   const [configError, setConfigError] = useState<string>()
 
@@ -206,6 +227,18 @@ export default function App() {
     }
     return computeHexagram(lines)
   }, [lines])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.theme = theme
+    root.style.colorScheme = theme
+
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme)
+    } catch {
+      // Ignore private browsing/localStorage restrictions.
+    }
+  }, [theme])
 
   useEffect(() => {
     let active = true
@@ -448,6 +481,10 @@ export default function App() {
     setView('toss')
   }, [])
 
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+  }, [])
+
   const generateInterpretation = useCallback(async () => {
     if (!result || loadingInterpretation) {
       return
@@ -497,6 +534,14 @@ export default function App() {
         </div>
 
         <div className="header-actions">
+          <button
+            type="button"
+            className="toggle-btn theme-toggle-btn"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </button>
           {view === 'result' ? (
             <button type="button" className="toggle-btn" onClick={returnToTossView}>
               返回抛掷
