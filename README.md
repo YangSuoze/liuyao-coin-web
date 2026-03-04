@@ -53,6 +53,37 @@ Gesture assets can be overridden in `vision.*` or by env vars:
 - `VITE_GESTURE_WASM_BASE_URL`
 - `VITE_GESTURE_MODEL_ASSET_URL`
 
+#### `hexagrams` schema (`public/config.json`)
+
+`hexagrams` is a map keyed by a **6-bit binary string**:
+
+- Key format: `^[01]{6}$`
+- Bit meaning: `1 = yang`, `0 = yin`
+- Bit order: **bottom line -> top line** (first bit is line 1 / 初爻)
+
+Each value can be:
+
+- An object: `{ "title"?: string, "text"?: string }`
+- Or a string (treated as `{ "text": "..." }`)
+
+Example:
+
+```json
+{
+  "hexagrams": {
+    "111111": {
+      "title": "Qian",
+      "text": "Strong creative force. Favor proactive but disciplined action."
+    },
+    "000000": {
+      "title": "Kun",
+      "text": "Receptive and supportive. Focus on steady execution."
+    },
+    "010010": "Kan: risk, caution, and preparation."
+  }
+}
+```
+
 `npm i` will run a postinstall step that copies local wasm files to `public/mediapipe-wasm/`.
 
 The client will call:
@@ -106,6 +137,37 @@ npm run dev
 你也可以在 `prompts.system / prompts.userSuffix` 里自定义系统提示词与附加要求（无需改代码）。
 你也可以用环境变量覆盖手势资源地址：`VITE_GESTURE_WASM_BASE_URL`、`VITE_GESTURE_MODEL_ASSET_URL`。
 `npm i` 后会自动把本地 wasm 复制到 `public/mediapipe-wasm/`。
+
+#### `hexagrams` 配置说明（`public/config.json`）
+
+`hexagrams` 是一个对象映射，key 必须是 **6 位二进制字符串**：
+
+- key 格式：`^[01]{6}$`
+- 位含义：`1 = 阳爻`，`0 = 阴爻`
+- 位顺序：**自下而上**（第 1 位是初爻，第 6 位是上爻）
+
+每个 value 支持两种写法：
+
+- 对象：`{ "title"?: string, "text"?: string }`
+- 字符串：会被视为 `{ "text": "..." }`
+
+示例：
+
+```json
+{
+  "hexagrams": {
+    "111111": {
+      "title": "乾为天",
+      "text": "刚健进取，宜主动但要守正。"
+    },
+    "000000": {
+      "title": "坤为地",
+      "text": "柔顺承载，宜配合与积累。"
+    },
+    "010010": "坎为水：险中求通，重视风险控制。"
+  }
+}
+```
 
 ### 构建
 

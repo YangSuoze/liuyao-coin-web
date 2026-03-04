@@ -11,29 +11,7 @@ interface CoinTossPanelProps {
   lastTrigger?: 'manual' | 'gesture'
   onToss: () => void
   tossAnimation: CoinAnimationConfig
-  manualControl: {
-    power: number
-    speed: number
-  }
-  activeTossControl: {
-    power: number
-    speed: number
-  }
-  lastTossEntropy?: {
-    source: 'manual' | 'gesture'
-    seedHex: string
-    power: number
-    speed: number
-    verticalVelocity: number
-    velocityEnergy: number
-    palmSpanMean: number
-    palmSpanRange: number
-    sampleCount: number
-  }
   gestureControl: GestureControl
-  cameraEnabled: boolean
-  onManualPowerChange: (power: number) => void
-  onManualSpeedChange: (speed: number) => void
   canOpenResult: boolean
   onOpenResult: () => void
 }
@@ -46,23 +24,10 @@ export function CoinTossPanel({
   lastTrigger,
   onToss,
   tossAnimation,
-  manualControl,
-  activeTossControl,
-  lastTossEntropy,
   gestureControl,
-  cameraEnabled,
-  onManualPowerChange,
-  onManualSpeedChange,
   canOpenResult,
   onOpenResult,
 }: CoinTossPanelProps) {
-  const manualPower = Math.round(manualControl.power * 100)
-  const manualSpeed = Math.round(manualControl.speed * 100)
-  const activePower = Math.round(activeTossControl.power * 100)
-  const activeSpeed = Math.round(activeTossControl.speed * 100)
-  const livePower = Math.round(gestureControl.power * 100)
-  const liveSpeed = Math.round(gestureControl.speed * 100)
-
   const stageStyle = {
     '--stage-parallax-x': `${((0.5 - gestureControl.power) * 5.4).toFixed(2)}deg`,
     '--stage-parallax-y': `${((gestureControl.speed - 0.5) * 9).toFixed(2)}deg`,
@@ -70,13 +35,7 @@ export function CoinTossPanel({
   } as CSSProperties
 
   return (
-    <section className="panel coin-panel">
-      <div className="coin-panel-head">
-        <p className="eyebrow">Liuyao Toss</p>
-        <h2>三枚铜钱 · 3D</h2>
-        <p className="panel-subtitle">Power 控制高度，Speed 控制旋转。</p>
-      </div>
-
+    <section className="coin-hero" aria-label="Toss stage">
       <div className="coin-stage" style={stageStyle}>
         <div className="coin-row" role="group" aria-label="Three coins">
           {coins.map((coin, idx) => (
@@ -92,88 +51,33 @@ export function CoinTossPanel({
         </div>
       </div>
 
-      <div className="toss-actions">
+      <div className="toss-actions hero-actions">
         <button
           type="button"
-          className="action-btn"
+          className="action-btn hero-toss-btn"
           disabled={!canToss || isAnimating}
           onClick={onToss}
         >
           {isAnimating ? 'Tossing...' : 'Toss'}
         </button>
-        <span className="muted">
-          已抛掷 {tossCount}/6
-          {lastTrigger ? ` · 最近: ${lastTrigger === 'manual' ? '手动' : '手势'}` : ''}
-        </span>
 
         {canOpenResult ? (
           <button type="button" className="result-arrow-btn" onClick={onOpenResult}>
-            <span aria-hidden="true">→</span>
-            <span>查看卦象</span>
+            <span>Result</span>
+            <span aria-hidden="true">{'->'}</span>
           </button>
         ) : null}
-      </div>
 
-      <div className="control-badges" aria-live="polite">
-        <span className="control-badge">本次高度 {activePower}%</span>
-        <span className="control-badge">本次速度 {activeSpeed}%</span>
-        <span className="control-badge">
-          {cameraEnabled
-            ? `实时手势 高度 ${livePower}% / 速度 ${liveSpeed}%`
-            : '摄像头关闭，使用手动参数'}
+        <span className="progress-pill">
+          {tossCount}/6
+          {lastTrigger ? ` · ${lastTrigger}` : ''}
         </span>
       </div>
 
-      {lastTossEntropy ? (
-        <section className="debug-panel" aria-live="polite">
-          <p className="debug-title">Entropy Debug</p>
-          <p className="debug-line">
-            seed: <code>{lastTossEntropy.seedHex}</code> · source:{' '}
-            {lastTossEntropy.source}
-          </p>
-          <p className="debug-line">
-            power/speed: {Math.round(lastTossEntropy.power * 100)}% /{' '}
-            {Math.round(lastTossEntropy.speed * 100)}%
-          </p>
-          <p className="debug-line">
-            velocity: {lastTossEntropy.verticalVelocity.toFixed(4)} · energy:{' '}
-            {lastTossEntropy.velocityEnergy.toFixed(4)}
-          </p>
-          <p className="debug-line">
-            palmSpan mean/range: {lastTossEntropy.palmSpanMean.toFixed(4)} /{' '}
-            {lastTossEntropy.palmSpanRange.toFixed(4)} · samples:{' '}
-            {lastTossEntropy.sampleCount}
-          </p>
-        </section>
-      ) : null}
-
-      <div className="slider-grid">
-        <label className="slider-card" htmlFor="manual-power">
-          <span className="slider-label">手动高度 (回退)</span>
-          <span className="slider-value">{manualPower}%</span>
-          <input
-            id="manual-power"
-            type="range"
-            min={0}
-            max={100}
-            value={manualPower}
-            onChange={(event) => onManualPowerChange(Number(event.target.value) / 100)}
-          />
-        </label>
-
-        <label className="slider-card" htmlFor="manual-speed">
-          <span className="slider-label">手动速度 (回退)</span>
-          <span className="slider-value">{manualSpeed}%</span>
-          <input
-            id="manual-speed"
-            type="range"
-            min={0}
-            max={100}
-            value={manualSpeed}
-            onChange={(event) => onManualSpeedChange(Number(event.target.value) / 100)}
-          />
-        </label>
-      </div>
+      <p className="gesture-hint">
+        <span className="hint-dot" aria-hidden="true"></span>
+        Open palm -&gt; fist to toss
+      </p>
     </section>
   )
 }
