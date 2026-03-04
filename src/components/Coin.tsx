@@ -80,12 +80,12 @@ export function Coin({ side, spinning, index, animation, motionControl }: CoinPr
       <div className="coin-body">
         <div className="coin-face coin-face-front" aria-hidden="true">
           <span className="coin-symbol">阳</span>
-          <span className="coin-mark">HEADS</span>
+          <span className="coin-mark">☰</span>
         </div>
 
         <div className="coin-face coin-face-back" aria-hidden="true">
           <span className="coin-symbol">阴</span>
-          <span className="coin-mark">TAILS</span>
+          <span className="coin-mark">☷</span>
         </div>
 
         <div className="coin-rim" aria-hidden="true"></div>
