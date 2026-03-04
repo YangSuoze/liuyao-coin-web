@@ -4,7 +4,7 @@ import type { GestureState } from '../vision/useHandGestureToss'
 interface CameraPanelProps {
   enabled: boolean
   onToggle: (next: boolean) => void
-  videoRef: RefObject<HTMLVideoElement | null>
+  previewRef: RefObject<HTMLVideoElement | null>
   cameraError?: string
   gestureState: GestureState
 }
@@ -12,7 +12,7 @@ interface CameraPanelProps {
 export function CameraPanel({
   enabled,
   onToggle,
-  videoRef,
+  previewRef,
   cameraError,
   gestureState,
 }: CameraPanelProps) {
@@ -42,7 +42,7 @@ export function CameraPanel({
 
       <div className="camera-preview-wrap">
         <video
-          ref={videoRef}
+          ref={previewRef}
           className="camera-preview"
           autoPlay
           playsInline

@@ -213,6 +213,7 @@ export default function App() {
   const [cameraEnabled, setCameraEnabled] = useState(false)
   const [cameraError, setCameraError] = useState<string>()
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const spinTimerRef = useRef<number | null>(null)
 
@@ -278,6 +279,10 @@ export default function App() {
     if (videoRef.current) {
       videoRef.current.srcObject = null
     }
+
+    if (previewVideoRef.current) {
+      previewVideoRef.current.srcObject = null
+    }
   }, [])
 
   useEffect(() => {
@@ -312,9 +317,14 @@ export default function App() {
 
         streamRef.current = stream
         const video = videoRef.current
+        const preview = previewVideoRef.current
         if (video) {
           video.srcObject = stream
           await video.play().catch(() => undefined)
+        }
+        if (preview) {
+          preview.srcObject = stream
+          await preview.play().catch(() => undefined)
         }
 
         setCameraError(undefined)
@@ -542,6 +552,15 @@ export default function App() {
       </header>
 
       <main className={`app-main ${view === 'result' ? 'result-main' : 'toss-main'}`}>
+        {/* Hidden video sink to keep gesture tracking alive even when CameraPanel is not rendered on toss view. */}
+        <video
+          ref={videoRef}
+          className="gesture-video-sink"
+          autoPlay
+          playsInline
+          muted
+          aria-hidden="true"
+        />
         {view === 'toss' ? (
           <section className="launch-hero">
             <CoinTossPanel
@@ -624,7 +643,7 @@ export default function App() {
                 <CameraPanel
                   enabled={cameraEnabled}
                   onToggle={setCameraEnabled}
-                  videoRef={videoRef}
+                  previewRef={previewVideoRef}
                   cameraError={cameraError}
                   gestureState={gestureState}
                 />
