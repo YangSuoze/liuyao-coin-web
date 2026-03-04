@@ -11,14 +11,44 @@ export interface CoinAnimationConfig {
   wobbleDeg: number
 }
 
+export interface CoinMotionControl {
+  power: number
+  speed: number
+}
+
 interface CoinProps {
   side: CoinSide
   spinning: boolean
   index: number
   animation: CoinAnimationConfig
+  motionControl: CoinMotionControl
 }
 
-export function Coin({ side, spinning, index, animation }: CoinProps) {
+function clamp01(value: number): number {
+  if (value < 0) {
+    return 0
+  }
+  if (value > 1) {
+    return 1
+  }
+  return value
+}
+
+export function Coin({ side, spinning, index, animation, motionControl }: CoinProps) {
+  const power = clamp01(motionControl.power)
+  const speed = clamp01(motionControl.speed)
+  const indexOffset = index - 1
+
+  const tiltX = 5 - power * 10 + indexOffset * 1.6
+  const tiltY = -8 + speed * 16 + indexOffset * 3.1
+  const depthPx = Math.round(10 + speed * 10)
+  const glintX = `${Math.round(26 + speed * 44 + indexOffset * 4)}%`
+  const glintY = `${Math.round(20 + (1 - power) * 52)}%`
+  const restLift = `${Math.round((0.5 - power) * 12 - Math.abs(indexOffset) * 2)}px`
+  const restRotationDeg = side === 'heads' ? 0 : 180
+  const restRotation = `${restRotationDeg}deg`
+  const spinBaseRotation = `${(restRotationDeg + tiltY).toFixed(2)}deg`
+
   const style = {
     animationDelay: `${index * 74}ms`,
     '--coin-launch-height': `${animation.launchHeight}px`,
@@ -28,6 +58,17 @@ export function Coin({ side, spinning, index, animation }: CoinProps) {
     '--coin-rotate-peak': `${animation.rotatePeakDeg}deg`,
     '--coin-rotate-end': `${animation.rotateEndDeg}deg`,
     '--coin-wobble': `${animation.wobbleDeg}deg`,
+    '--coin-tilt-x': `${tiltX.toFixed(2)}deg`,
+    '--coin-tilt-y': `${tiltY.toFixed(2)}deg`,
+    '--coin-depth': `${depthPx}px`,
+    '--coin-glint-x': glintX,
+    '--coin-glint-y': glintY,
+    '--coin-rest-lift': restLift,
+    '--coin-rest-rotation': restRotation,
+    '--coin-spin-base': spinBaseRotation,
+    '--coin-wobble-neg': `${-animation.wobbleDeg}deg`,
+    '--coin-wobble-soft': `${Math.round(animation.wobbleDeg * 0.36)}deg`,
+    '--coin-glint-opacity': (0.28 + speed * 0.42).toFixed(3),
   } as CSSProperties
 
   return (
@@ -36,31 +77,20 @@ export function Coin({ side, spinning, index, animation }: CoinProps) {
       style={style}
       aria-label={`Coin ${index + 1}: ${side}`}
     >
-      <svg viewBox="0 0 120 120" role="img" aria-hidden="true">
-        <defs>
-          <radialGradient id={`coin-grad-core-${index}`} cx="35%" cy="30%" r="72%">
-            <stop offset="0%" stopColor="#fffbe8" />
-            <stop offset="42%" stopColor="#f4d17a" />
-            <stop offset="100%" stopColor="#9c6d1a" />
-          </radialGradient>
-          <linearGradient id={`coin-rim-${index}`} x1="0%" x2="100%" y1="0%" y2="100%">
-            <stop offset="0%" stopColor="#ffe8ad" />
-            <stop offset="46%" stopColor="#bd8732" />
-            <stop offset="100%" stopColor="#7c520f" />
-          </linearGradient>
-        </defs>
+      <div className="coin-body">
+        <div className="coin-face coin-face-front" aria-hidden="true">
+          <span className="coin-symbol">阳</span>
+          <span className="coin-mark">HEADS</span>
+        </div>
 
-        <circle cx="60" cy="60" r="56" fill={`url(#coin-rim-${index})`} />
-        <circle cx="60" cy="60" r="48" fill={`url(#coin-grad-core-${index})`} />
-        <circle cx="60" cy="60" r="42" fill="none" stroke="#fff2c7" strokeWidth="1.8" />
+        <div className="coin-face coin-face-back" aria-hidden="true">
+          <span className="coin-symbol">阴</span>
+          <span className="coin-mark">TAILS</span>
+        </div>
 
-        <text x="60" y="58" textAnchor="middle" dominantBaseline="central" className="coin-symbol">
-          {side === 'heads' ? '阳' : '阴'}
-        </text>
-        <text x="60" y="81" textAnchor="middle" className="coin-mark">
-          {side === 'heads' ? 'HEADS' : 'TAILS'}
-        </text>
-      </svg>
+        <div className="coin-rim" aria-hidden="true"></div>
+        <div className="coin-specular" aria-hidden="true"></div>
+      </div>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { CoinSide } from '../logic/types'
 import type { GestureControl } from '../vision/useHandGestureToss'
 import { Coin, type CoinAnimationConfig } from './Coin'
@@ -22,6 +23,8 @@ interface CoinTossPanelProps {
   cameraEnabled: boolean
   onManualPowerChange: (power: number) => void
   onManualSpeedChange: (speed: number) => void
+  canOpenResult: boolean
+  onOpenResult: () => void
 }
 
 export function CoinTossPanel({
@@ -38,6 +41,8 @@ export function CoinTossPanel({
   cameraEnabled,
   onManualPowerChange,
   onManualSpeedChange,
+  canOpenResult,
+  onOpenResult,
 }: CoinTossPanelProps) {
   const manualPower = Math.round(manualControl.power * 100)
   const manualSpeed = Math.round(manualControl.speed * 100)
@@ -46,15 +51,21 @@ export function CoinTossPanel({
   const livePower = Math.round(gestureControl.power * 100)
   const liveSpeed = Math.round(gestureControl.speed * 100)
 
+  const stageStyle = {
+    '--stage-parallax-x': `${((0.5 - gestureControl.power) * 5.4).toFixed(2)}deg`,
+    '--stage-parallax-y': `${((gestureControl.speed - 0.5) * 9).toFixed(2)}deg`,
+    '--stage-glow-opacity': (0.12 + gestureControl.speed * 0.24).toFixed(3),
+  } as CSSProperties
+
   return (
     <section className="panel coin-panel">
       <div className="coin-panel-head">
-        <p className="eyebrow">Premium Toss Deck</p>
-        <h2>三枚铜钱</h2>
-        <p className="panel-subtitle">上抬手势提升抛掷高度，下压手势提升旋转速度。</p>
+        <p className="eyebrow">Liuyao Toss</p>
+        <h2>三枚铜钱 · 3D</h2>
+        <p className="panel-subtitle">Power 控制高度，Speed 控制旋转。</p>
       </div>
 
-      <div className="coin-stage">
+      <div className="coin-stage" style={stageStyle}>
         <div className="coin-row" role="group" aria-label="Three coins">
           {coins.map((coin, idx) => (
             <Coin
@@ -63,6 +74,7 @@ export function CoinTossPanel({
               spinning={isAnimating}
               index={idx}
               animation={tossAnimation}
+              motionControl={gestureControl}
             />
           ))}
         </div>
@@ -79,8 +91,15 @@ export function CoinTossPanel({
         </button>
         <span className="muted">
           已抛掷 {tossCount}/6
-          {lastTrigger ? ` · 最近触发: ${lastTrigger === 'manual' ? '手动' : '手势'}` : ''}
+          {lastTrigger ? ` · 最近: ${lastTrigger === 'manual' ? '手动' : '手势'}` : ''}
         </span>
+
+        {canOpenResult ? (
+          <button type="button" className="result-arrow-btn" onClick={onOpenResult}>
+            <span aria-hidden="true">→</span>
+            <span>查看卦象</span>
+          </button>
+        ) : null}
       </div>
 
       <div className="control-badges" aria-live="polite">

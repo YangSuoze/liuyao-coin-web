@@ -15,6 +15,8 @@ import { computeHexagram } from './logic/hexagram'
 import type { CoinSide, TossRecord } from './logic/types'
 import { useHandGestureToss, type GestureControl } from './vision/useHandGestureToss'
 
+type AppView = 'toss' | 'result'
+
 const INITIAL_COINS: CoinSide[] = ['heads', 'tails', 'heads']
 const INITIAL_MANUAL_CONTROL = {
   power: 0.56,
@@ -84,6 +86,7 @@ function buildTossAnimation(control: TossControlInput): TossAnimationProfile {
 }
 
 export default function App() {
+  const [view, setView] = useState<AppView>('toss')
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG)
   const [configError, setConfigError] = useState<string>()
 
@@ -302,6 +305,12 @@ export default function App() {
     visionConfig: config.vision,
   })
 
+  useEffect(() => {
+    if (view === 'result' && cameraEnabled) {
+      setCameraEnabled(false)
+    }
+  }, [cameraEnabled, view])
+
   const updateManualPower = useCallback((power: number) => {
     setManualControl((prev) => ({
       ...prev,
@@ -329,6 +338,17 @@ export default function App() {
     setInterpretation('')
     setInterpretationError(undefined)
     setLoadingInterpretation(false)
+    setView('toss')
+  }, [])
+
+  const openResultView = useCallback(() => {
+    if (records.length === 6) {
+      setView('result')
+    }
+  }, [records.length])
+
+  const returnToTossView = useCallback(() => {
+    setView('toss')
   }, [])
 
   const generateInterpretation = useCallback(async () => {
@@ -367,115 +387,164 @@ export default function App() {
   const changedContent = result ? config.hexagrams[result.changed.binary] : undefined
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${view === 'result' ? 'result-mode' : 'toss-mode'}`}>
       <header className="app-header">
-        <p className="eyebrow">Liuyao Coin Toss</p>
-        <h1>六爻 · 铜钱起卦</h1>
-        <p className="intro">
-          三枚铜钱抛掷六次生成主卦与变卦。手势模式支持动态设置抛掷高度与旋转速度。
-        </p>
+        <div className="header-main">
+          <p className="eyebrow">Liuyao Coin</p>
+          <h1>六爻 · Coin Toss</h1>
+          <p className="intro">
+            {view === 'toss'
+              ? '聚焦抛掷。Power 决定高度，Speed 决定旋转。'
+              : '结果视图展示主卦、变卦、六爻记录与可选解读。'}
+          </p>
+        </div>
 
-        <label htmlFor="question" className="question-label">
-          所问何事
-        </label>
-        <input
-          id="question"
-          className="question-input"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="例如：近期是否适合换工作？"
-        />
+        <div className="header-actions">
+          {view === 'result' ? (
+            <button type="button" className="toggle-btn" onClick={returnToTossView}>
+              返回抛掷
+            </button>
+          ) : null}
+          <button type="button" className="ghost-btn" onClick={resetSession}>
+            重置本轮
+          </button>
+        </div>
 
         <div className="header-meta">
           {configError ? <span className="error-text">配置加载失败: {configError}</span> : null}
           {!config.llm.apiKey ? (
-            <span className="warning-text">`public/config.json` 的 llm.apiKey 为空，AI 解读将不可用。</span>
+            <span className="warning-text">`public/config.json` 的 llm.apiKey 为空，AI 解读不可用。</span>
           ) : (
             <span className="muted">LLM model: {config.llm.model}</span>
           )}
         </div>
       </header>
 
-      <main className="app-main">
-        <section className="hero-stage">
-          <CoinTossPanel
-            coins={coinFaces}
-            isAnimating={isAnimating}
-            canToss={records.length < 6}
-            tossCount={records.length}
-            lastTrigger={lastTrigger}
-            onToss={() => toss('manual')}
-            tossAnimation={coinAnimation}
-            manualControl={manualControl}
-            activeTossControl={activeTossControl}
-            gestureControl={gestureState.gestureControl}
-            cameraEnabled={cameraEnabled}
-            onManualPowerChange={updateManualPower}
-            onManualSpeedChange={updateManualSpeed}
-          />
-        </section>
-
-        <section className="main-grid">
-          <div className="column">
-            <CameraPanel
-              enabled={cameraEnabled}
-              onToggle={setCameraEnabled}
-              videoRef={videoRef}
-              cameraError={cameraError}
-              gestureState={gestureState}
-            />
-
-            <section className="panel session-panel">
-              <button type="button" className="ghost-btn" onClick={resetSession}>
-                重置本轮
-              </button>
-              <p className="muted">抛掷满六次后自动计算卦象。</p>
+      <main className={`app-main ${view === 'result' ? 'result-main' : 'toss-main'}`}>
+        {view === 'toss' ? (
+          <>
+            <section className="hero-stage">
+              <CoinTossPanel
+                coins={coinFaces}
+                isAnimating={isAnimating}
+                canToss={records.length < 6}
+                tossCount={records.length}
+                lastTrigger={lastTrigger}
+                onToss={() =>
+                  toss(
+                    'manual',
+                    cameraEnabled ? gestureState.gestureControl : manualControl,
+                  )
+                }
+                tossAnimation={coinAnimation}
+                manualControl={manualControl}
+                activeTossControl={activeTossControl}
+                gestureControl={gestureState.gestureControl}
+                cameraEnabled={cameraEnabled}
+                onManualPowerChange={updateManualPower}
+                onManualSpeedChange={updateManualSpeed}
+                canOpenResult={Boolean(result)}
+                onOpenResult={openResultView}
+              />
             </section>
-          </div>
 
-          <div className="column">
-            <LineHistory records={records} />
+            <section className="support-grid">
+              <CameraPanel
+                enabled={cameraEnabled}
+                onToggle={setCameraEnabled}
+                videoRef={videoRef}
+                cameraError={cameraError}
+                gestureState={gestureState}
+              />
+
+              <section className="panel session-panel">
+                <h2>Session</h2>
+                <p className="muted">抛掷满六次后可进入结果视图。</p>
+                <p className="hint-text">
+                  摄像头开启时，按钮 Toss 也将直接使用实时手势参数。
+                </p>
+                {result ? (
+                  <button type="button" className="toggle-btn" onClick={openResultView}>
+                    进入结果视图 →
+                  </button>
+                ) : null}
+              </section>
+            </section>
+          </>
+        ) : (
+          <section className="result-view">
+            <section className="panel result-header-panel">
+              <div>
+                <p className="eyebrow">Result View</p>
+                <h2>卦象结果</h2>
+              </div>
+              <button
+                type="button"
+                className="result-back-btn"
+                onClick={returnToTossView}
+                aria-label="Back to toss view"
+              >
+                ←
+              </button>
+            </section>
 
             {result ? (
-              <section className="hexagram-grid">
-                <HexagramDisplay
-                  heading="主卦"
-                  name={result.main.name}
-                  binary={result.main.binary}
-                  description={result.main.description}
-                  lines={result.lines.map((line) => ({
-                    isYang: line.isYang,
-                    isMoving: line.isMoving,
-                  }))}
-                  content={mainContent}
+              <>
+                <section className="hexagram-grid">
+                  <HexagramDisplay
+                    heading="主卦"
+                    name={result.main.name}
+                    binary={result.main.binary}
+                    description={result.main.description}
+                    lines={result.lines.map((line) => ({
+                      isYang: line.isYang,
+                      isMoving: line.isMoving,
+                    }))}
+                    content={mainContent}
+                  />
+                  <HexagramDisplay
+                    heading="变卦"
+                    name={result.changed.name}
+                    binary={result.changed.binary}
+                    description={result.changed.description}
+                    lines={result.lines.map((line) => ({
+                      isYang: line.isMoving ? !line.isYang : line.isYang,
+                    }))}
+                    content={changedContent}
+                  />
+                </section>
+
+                <LineHistory records={records} />
+
+                <section className="panel question-panel">
+                  <label htmlFor="question" className="question-label">
+                    所问何事（可选）
+                  </label>
+                  <input
+                    id="question"
+                    className="question-input"
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    placeholder="例如：近期是否适合换工作？"
+                  />
+                </section>
+
+                <InterpretationPanel
+                  canGenerate={Boolean(result)}
+                  loading={loadingInterpretation}
+                  error={interpretationError}
+                  interpretation={interpretation}
+                  onGenerate={generateInterpretation}
                 />
-                <HexagramDisplay
-                  heading="变卦"
-                  name={result.changed.name}
-                  binary={result.changed.binary}
-                  description={result.changed.description}
-                  lines={result.lines.map((line) => ({
-                    isYang: line.isMoving ? !line.isYang : line.isYang,
-                  }))}
-                  content={changedContent}
-                />
-              </section>
+              </>
             ) : (
               <section className="panel">
                 <h2>卦象结果</h2>
                 <p className="muted">完成六次 Toss 后显示主卦、变卦与动爻。</p>
               </section>
             )}
-
-            <InterpretationPanel
-              canGenerate={Boolean(result)}
-              loading={loadingInterpretation}
-              error={interpretationError}
-              interpretation={interpretation}
-              onGenerate={generateInterpretation}
-            />
-          </div>
-        </section>
+          </section>
+        )}
       </main>
     </div>
   )
